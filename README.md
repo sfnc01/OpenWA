@@ -158,6 +158,19 @@ docker compose --profile full up -d
 > - Development (`docker-compose.dev.yml`): SQLite, local storage, both API & Dashboard included
 > - Production (`docker-compose.yml`): Configurable database, profiles for optional services
 
+### Coolify
+
+For Coolify-managed VPS deployments, use the dedicated Compose file:
+
+```text
+/docker-compose.coolify.yml
+```
+
+Set the build pack to Docker Compose, use `/` as the base directory, and assign
+your public domain to the `dashboard` service on port `80`. See
+[`docs/coolify-deployment.md`](docs/coolify-deployment.md) for required
+environment variables and verification steps.
+
 ## 🔌 Ports
 
 | Service   | Port            | Description              |

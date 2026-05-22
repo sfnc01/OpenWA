@@ -1,0 +1,110 @@
+# OpenWA - Coolify deployment stack
+#
+# In Coolify, use the Docker Compose build pack and set this file as:
+#   /docker-compose.coolify.yml
+#
+# Assign your public domain to the `dashboard` service on port 80. The dashboard
+# proxies /api and /socket.io to the internal API container.
+
+services:
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile.coolify
+    restart: unless-stopped
+    expose:
+      - '80'
+    depends_on:
+      openwa-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ >/dev/null || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  openwa-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - '2785'
+    environment:
+      NODE_ENV: production
+      PORT: 2785
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-openwa}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-openwa}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in Coolify before deploying}
+      DATABASE_SYNCHRONIZE: 'false'
+      DATABASE_LOGGING: ${DATABASE_LOGGING:-false}
+
+      ENGINE_TYPE: whatsapp-web.js
+      SESSION_DATA_PATH: /app/data/sessions
+      PUPPETEER_HEADLESS: ${PUPPETEER_HEADLESS:-true}
+      PUPPETEER_ARGS: ${PUPPETEER_ARGS:---no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu}
+
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/data/media
+      REDIS_ENABLED: 'false'
+      QUEUE_ENABLED: 'false'
+      CACHE_ENABLED: 'false'
+
+      WEBHOOK_TIMEOUT: ${WEBHOOK_TIMEOUT:-10000}
+      WEBHOOK_MAX_RETRIES: ${WEBHOOK_MAX_RETRIES:-3}
+      WEBHOOK_RETRY_DELAY: ${WEBHOOK_RETRY_DELAY:-5000}
+      RATE_LIMIT_SHORT_TTL: ${RATE_LIMIT_SHORT_TTL:-1000}
+      RATE_LIMIT_SHORT_LIMIT: ${RATE_LIMIT_SHORT_LIMIT:-10}
+      RATE_LIMIT_MEDIUM_TTL: ${RATE_LIMIT_MEDIUM_TTL:-60000}
+      RATE_LIMIT_MEDIUM_LIMIT: ${RATE_LIMIT_MEDIUM_LIMIT:-100}
+      RATE_LIMIT_LONG_TTL: ${RATE_LIMIT_LONG_TTL:-3600000}
+      RATE_LIMIT_LONG_LIMIT: ${RATE_LIMIT_LONG_LIMIT:-1000}
+
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:-true}
+      PLUGINS_DIR: /app/data/plugins
+      API_MASTER_KEY: ${API_MASTER_KEY:?Set API_MASTER_KEY in Coolify before deploying}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
+    volumes:
+      - openwa-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:2785/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-openwa}
+      POSTGRES_USER: ${DATABASE_USERNAME:-openwa}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in Coolify before deploying}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  openwa-data:
+  postgres-data:
