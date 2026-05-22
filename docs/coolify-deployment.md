@@ -33,6 +33,9 @@ API_MASTER_KEY=replace-with-a-long-random-secret
 DATABASE_PASSWORD=replace-with-a-long-random-secret
 ```
 
+These are runtime secrets. They do not need to be available during the Docker
+image build.
+
 Recommended production value:
 
 ```env

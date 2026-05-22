@@ -42,7 +42,7 @@ services:
       DATABASE_PORT: 5432
       DATABASE_NAME: ${DATABASE_NAME:-openwa}
       DATABASE_USERNAME: ${DATABASE_USERNAME:-openwa}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in Coolify before deploying}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       DATABASE_SYNCHRONIZE: 'false'
       DATABASE_LOGGING: ${DATABASE_LOGGING:-false}
 
@@ -69,7 +69,7 @@ services:
 
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:-true}
       PLUGINS_DIR: /app/data/plugins
-      API_MASTER_KEY: ${API_MASTER_KEY:?Set API_MASTER_KEY in Coolify before deploying}
+      API_MASTER_KEY: ${API_MASTER_KEY}
       ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
     volumes:
       - openwa-data:/app/data
@@ -95,7 +95,7 @@ services:
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-openwa}
       POSTGRES_USER: ${DATABASE_USERNAME:-openwa}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in Coolify before deploying}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
