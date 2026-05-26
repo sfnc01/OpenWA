@@ -96,10 +96,40 @@ export function useStopSessionMutation() {
 
 // ── Webhook Queries ───────────────────────────────────────────────────
 
+/**
+ * Normalize backend webhook rows so the UI can iterate `events` safely.
+ *
+ * Background: the entity's `events` column uses `simple-json` (SQLite) or
+ * `jsonb` (Postgres). On some driver/DB combinations the value comes back
+ * as a JSON-encoded string instead of a parsed array — or as null when an
+ * old row predates the `default '["message.received"]'` migration. Either
+ * way, the Webhooks page used to crash hard ("e.events.map is not a
+ * function") and the ErrorBoundary blanked the whole dashboard. Defending
+ * here keeps rendering robust regardless of DB quirks.
+ */
+function _normalizeWebhook(w: unknown): import('../services/api').Webhook {
+  const obj = (w ?? {}) as Record<string, unknown>;
+  let events = obj.events;
+  if (typeof events === 'string') {
+    // String values happen when the JSON column wasn't deserialized.
+    try { events = JSON.parse(events); } catch { events = []; }
+  }
+  if (!Array.isArray(events)) {
+    events = [];
+  }
+  return { ...(obj as object), events } as import('../services/api').Webhook;
+}
+
 export function useWebhooksQuery() {
   return useQuery({
     queryKey: queryKeys.webhooks,
-    queryFn: webhookApi.listAll,
+    queryFn: async () => {
+      const rows = await webhookApi.listAll();
+      // Coerce in case the API returns null/undefined/non-array under
+      // failure modes; then normalize every entry's events field.
+      const list = Array.isArray(rows) ? rows : [];
+      return list.map(_normalizeWebhook);
+    },
     staleTime: 30_000,
   });
 }
