@@ -383,7 +383,11 @@ export function Webhooks() {
                     <ExternalLink size={14} />
                   </span>
                   <span className="events-cell">
-                    {webhook.events.map((event: string) => (
+                    {/* Belt-and-suspenders: useWebhooksQuery already normalizes
+                        `events` to a string[], but this guard prevents the
+                        whole dashboard from blanking via ErrorBoundary if any
+                        future code path bypasses the hook. */}
+                    {(Array.isArray(webhook.events) ? webhook.events : []).map((event: string) => (
                       <span key={event} className="event-tag">
                         {event}
                       </span>
