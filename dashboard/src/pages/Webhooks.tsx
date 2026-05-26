@@ -49,7 +49,7 @@ export function Webhooks() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; id: string; url: string } | null>(null);
   const [editWebhook, setEditWebhook] = useState<Webhook | null>(null);
-  const [newWebhook, setNewWebhook] = useState({ url: '', events: ['message.received'], sessionId: '' });
+  const [newWebhook, setNewWebhook] = useState({ url: '', events: ['message.received'], sessionId: '', secret: '' });
   const [testingId, setTestingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -72,9 +72,13 @@ export function Webhooks() {
         sessionId: newWebhook.sessionId,
         url: newWebhook.url,
         events: newWebhook.events,
+        // Only send secret when provided. Empty string would clear the
+        // HMAC signing key entirely (server-side default is null which
+        // disables signature verification per-webhook).
+        ...(newWebhook.secret ? { secret: newWebhook.secret } : {}),
       });
       setShowCreateModal(false);
-      setNewWebhook({ url: '', events: ['message.received'], sessionId: '' });
+      setNewWebhook({ url: '', events: ['message.received'], sessionId: '', secret: '' });
       setToast({ type: 'success', message: t('webhooks.toasts.created') });
     } catch (err) {
       setToast({
@@ -133,17 +137,30 @@ export function Webhooks() {
   };
 
   const openEdit = (webhook: Webhook) => {
-    setEditWebhook({ ...webhook });
+    // Start the edit form with secret blank so we don't display (or
+    // accidentally re-submit) the existing value. Server-side `Partial<Webhook>`
+    // update semantics: omitted fields stay unchanged.
+    setEditWebhook({ ...webhook, secret: '' });
     setShowEditModal(true);
   };
 
   const handleEdit = async () => {
     if (!editWebhook) return;
     try {
+      const data: Partial<Webhook> = {
+        url: editWebhook.url,
+        events: editWebhook.events,
+        active: editWebhook.active,
+      };
+      // Only submit `secret` when the user actually typed something —
+      // leaving it blank preserves whatever the server already has.
+      if (editWebhook.secret && editWebhook.secret.trim().length > 0) {
+        data.secret = editWebhook.secret;
+      }
       await updateMutation.mutateAsync({
         sessionId: editWebhook.sessionId,
         id: editWebhook.id,
-        data: { url: editWebhook.url, events: editWebhook.events, active: editWebhook.active },
+        data,
       });
       setShowEditModal(false);
       setEditWebhook(null);
@@ -253,6 +270,21 @@ export function Webhooks() {
                   </button>
                 ))}
               </div>
+              <label>Secret (optional)</label>
+              <input
+                type="text"
+                placeholder="HMAC signing key — leave empty to disable signature verification"
+                value={newWebhook.secret}
+                onChange={e => setNewWebhook({ ...newWebhook, secret: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <small style={{ color: 'var(--text-muted, #888)', fontSize: '0.75rem' }}>
+                When set, OpenWA signs each delivery with HMAC-SHA256 and sends
+                the digest in the X-OpenWA-Signature header. Your receiver must
+                use the same secret to verify requests. Required if the
+                receiver enforces signature verification.
+              </small>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>
@@ -295,6 +327,20 @@ export function Webhooks() {
                   </button>
                 ))}
               </div>
+              <label>Secret (leave blank to keep current)</label>
+              <input
+                type="text"
+                placeholder="••••••••  (existing secret is not shown for security)"
+                value={editWebhook.secret ?? ''}
+                onChange={e => setEditWebhook({ ...editWebhook, secret: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <small style={{ color: 'var(--text-muted, #888)', fontSize: '0.75rem' }}>
+                Only filled values are submitted — leaving this blank keeps the
+                stored secret unchanged. To clear an existing secret, you'd
+                need to delete and recreate the webhook.
+              </small>
               <div className="toggle-group">
                 <span className="toggle-label">{t('common.status')}</span>
                 <label className="toggle-switch">
