@@ -29,6 +29,11 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Chromium (Puppeteer) crashes tabs under heavy renders when /dev/shm is
+    # the Docker default of 64 MB. WhatsApp Web is a heavy SPA, so give the
+    # container 2 GB of shared memory. PUPPETEER_ARGS also passes
+    # --disable-dev-shm-usage as a belt-and-braces fallback.
+    shm_size: '2gb'
     expose:
       - '2785'
     environment:
