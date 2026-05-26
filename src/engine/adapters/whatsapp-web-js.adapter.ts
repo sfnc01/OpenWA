@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
   IWhatsAppEngine,
   EngineStatus,
@@ -88,6 +89,13 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         );
       }
 
+      // Self-heal stale Chromium locks left by a previous crashed launch.
+      // Without this, every restart-after-crash requires manual cleanup of
+      // SingletonLock/SingletonCookie/SingletonSocket inside the session's
+      // user-data-dir — see incident 2026-05-26 where the OpenWA session
+      // returned 500 on /start until these symlinks were removed by hand.
+      this.cleanStaleSingletonLocks();
+
       this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: this.config.sessionId,
@@ -104,6 +112,56 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     } catch (error) {
       this.setStatus(EngineStatus.FAILED);
       throw error;
+    }
+  }
+
+  /**
+   * Removes Chromium Singleton* lock files from the session's user-data-dir.
+   *
+   * whatsapp-web.js LocalAuth uses `{dataPath}/session-{clientId}/` as
+   * Chromium's --user-data-dir. When Chromium crashes (OOM, container kill,
+   * uncaught exception in the WebSocket layer), it leaves behind three
+   * symlinks at the data-dir root:
+   *   - SingletonLock    -> hostname-PID of the dead process
+   *   - SingletonCookie  -> a random cookie
+   *   - SingletonSocket  -> /tmp/org.chromium.Chromium.XXXX/SingletonSocket
+   *
+   * On the next launch, Chromium sees these, assumes another instance owns
+   * the profile, and exits immediately. Puppeteer reports an opaque
+   * ChildProcess `onexit` error which NestJS swallows as a 500.
+   *
+   * Sweeping them on every start makes restarts self-healing.
+   */
+  private cleanStaleSingletonLocks(): void {
+    const userDataDir = path.join(
+      path.resolve(this.config.sessionDataPath),
+      `session-${this.config.sessionId}`,
+    );
+    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+    const removed: string[] = [];
+
+    for (const name of lockFiles) {
+      const lockPath = path.join(userDataDir, name);
+      try {
+        // Use lstat so symlinks pointing at dead targets are still detected.
+        fs.lstatSync(lockPath);
+      } catch {
+        continue; // Doesn't exist — nothing to clean.
+      }
+      try {
+        fs.unlinkSync(lockPath);
+        removed.push(name);
+      } catch (err) {
+        this.logger.warn(
+          `Could not remove stale lock ${lockPath}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    if (removed.length > 0) {
+      this.logger.log(
+        `Removed stale Chromium locks before launch: ${removed.join(', ')}`,
+      );
     }
   }
 
